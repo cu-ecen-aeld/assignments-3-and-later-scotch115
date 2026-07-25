@@ -10,7 +10,7 @@
 # 3) Define project name with something like project(assignment-autotest)
 # The generated "assignment-autotest" application will run all tests defined in each AUTOTEST_SOURCES file
 
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.10.0)
 project(assignment-autotest)
 # Include unity testing
 add_subdirectory(Unity)

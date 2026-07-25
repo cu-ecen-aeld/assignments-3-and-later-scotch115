@@ -1,4 +1,11 @@
 #include "systemcalls.h"
+#include "stdlib.h"
+#include "unistd.h"
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 /**
  * @param cmd the command to execute with system()
@@ -16,8 +23,13 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int sysCall = system(cmd);
 
-    return true;
+    if (sysCall != -1) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 /**
@@ -58,10 +70,22 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    int waitStatus = 1;
+  
+    fflush(stdout);
+    fork();
+  
+    int response = execv(command[0], command);
+  
+    wait(&waitStatus);
+    
     va_end(args);
-
-    return true;
+    
+    if (response == -1) {
+        return false;
+    } else {
+        return true;
+    }
 }
 
 /**
@@ -92,6 +116,26 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int waitStatus = 1;
+    int commandID;
+    int file = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+
+    if (file < 0) {
+        printf("Error opening %s", outputfile);
+        return false;
+    }
+
+    switch(commandID = fork()) {
+        case -1:
+            printf("Error! Fork returned '-1'.");
+            return false;
+        case 0:
+            close(file);
+            if (execv(command[0], command) != -1) { return true; }
+            wait(&waitStatus);
+        default:
+            close(file);
+    }
 
     va_end(args);
 
