@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <err.h>
 
 
 /**
@@ -61,31 +62,42 @@ bool do_exec(int count, ...)
     // and may be removed
     command[count] = command[count];
 
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
-    int waitStatus = 1;
-  
-    fflush(stdout);
-    fork();
-  
-    int response = execv(command[0], command);
-  
-    wait(&waitStatus);
-    
-    va_end(args);
+    /*
+    * TODO:
+    *   Execute a system command by calling fork, execv(),
+    *   and wait instead of system (see LSP page 161).
+    *   Use the command[0] as the full path to the command to execute
+    *   (first argument to execv), and use the remaining arguments
+    *   as second argument to the execv() command.
+    *
+    */
+    pid_t response = fork();
     
     if (response == -1) {
+        perror("Fork failed");
         return false;
-    } else {
-        return true;
     }
+    
+    if (response == 0) {
+        // Run Child PID Process
+        fflush(stdout);
+        execv( command[0], command );
+        printf("RESPONSE (EXEC_RES) IS: %d\n", exec_res);
+        err(EXIT_FAILURE, "EXECV() FAILED");
+        if (exec_res == -1) {
+            printf("\n");
+            perror("'execv() FAILED WITH ERROR");
+            printf("When trying to call '%s'\n\n", *command);
+            return false;
+        } else {
+            return true;
+        }
+    } else {
+        wait( NULL );
+    }
+  
+    va_end(args);
+    return true;
 }
 
 /**
@@ -131,13 +143,14 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
             return false;
         case 0:
             close(file);
-            if (execv(command[0], command) != -1) { return true; }
+            if (execv(command[0], command) != -1) { 
+                va_end(args);
+                return true;
+            }
             wait(&waitStatus);
         default:
             close(file);
+            va_end(args);
+            return true;
     }
-
-    va_end(args);
-
-    return true;
 }
