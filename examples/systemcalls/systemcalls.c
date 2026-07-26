@@ -81,7 +81,7 @@ bool do_exec(int count, ...)
     if (response == 0) {
         // Run Child PID Process
         fflush(stdout);
-        execv( command[0], command );
+        int exec_res = execv( command[0], command );
         printf("RESPONSE (EXEC_RES) IS: %d\n", exec_res);
         err(EXIT_FAILURE, "EXECV() FAILED");
         if (exec_res == -1) {
