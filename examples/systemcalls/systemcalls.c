@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <err.h>
+#include <string.h>
 
 
 /**
@@ -18,12 +19,12 @@
 bool do_system(const char *cmd)
 {
 
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
+    /*
+    * TODO  add your code here
+    *  Call the system() function with the command set in the cmd
+    *   and return a boolean true if the system() call completed with success
+    *   or false() if it returned a failure
+    */
     int sysCall = system(cmd);
 
     if (sysCall != -1) {
@@ -62,6 +63,13 @@ bool do_exec(int count, ...)
     // and may be removed
     command[count] = command[count];
 
+    // Handle non-absolute paths for commands
+    if (command[0][0] != '/') {
+        return false;
+    } else if (command[2][0] != '/') {
+        return false;
+    }
+
     /*
     * TODO:
     *   Execute a system command by calling fork, execv(),
@@ -71,6 +79,8 @@ bool do_exec(int count, ...)
     *   as second argument to the execv() command.
     *
     */
+
+    fflush(stdout);
     pid_t response = fork();
     
     if (response == -1) {
@@ -80,18 +90,7 @@ bool do_exec(int count, ...)
     
     if (response == 0) {
         // Run Child PID Process
-        fflush(stdout);
-        int exec_res = execv( command[0], command );
-        printf("RESPONSE (EXEC_RES) IS: %d\n", exec_res);
-        err(EXIT_FAILURE, "EXECV() FAILED");
-        if (exec_res == -1) {
-            printf("\n");
-            perror("'execv() FAILED WITH ERROR");
-            printf("When trying to call '%s'\n\n", *command);
-            return false;
-        } else {
-            return true;
-        }
+        execv( command[0], command );
     } else {
         wait( NULL );
     }
@@ -121,36 +120,56 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = command[count];
 
 
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
-    int waitStatus = 1;
-    int commandID;
-    int file = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
-
-    if (file < 0) {
-        printf("Error opening %s", outputfile);
-        return false;
+    /*
+    * TODO
+    *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
+    *   redirect standard out to a file specified by outputfile.
+    *   The rest of the behaviour is same as do_exec()
+    *
+    */
+    char * filtered_command = malloc(strlen(command[1]) + 3);
+    if (!filtered_command) {
+        perror("Malloc failed");
+        return 1;
     }
 
-    switch(commandID = fork()) {
-        case -1:
-            printf("Error! Fork returned '-1'.");
+    sprintf(filtered_command, "'%s'", command[1]);
+
+    fflush(stdout);
+    pid_t child = fork();
+    if (child == -1) {
+        printf("Error! Fork returned '-1'.");
+        exit(EXIT_FAILURE);
+    } else {
+        int file = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+
+        if (file < 0) {
+            printf("Error opening %s", outputfile);
             return false;
-        case 0:
-            close(file);
-            if (execv(command[0], command) != -1) { 
-                va_end(args);
-                return true;
-            }
-            wait(&waitStatus);
-        default:
-            close(file);
-            va_end(args);
-            return true;
-    }
+        }
+        dup2(file, 1);
+        close(file);
+
+        // Handle non-absolute paths for commands
+        if (command[0][0] != '/') {
+            return false;
+        } else if (command[2][0] != '/') {
+            return false;
+        }
+
+        printf("FILTER: %s\n", filtered_command);
+
+        int exec_res = execv( command[0], &filtered_command );
+        if (exec_res == -1) {
+            printf("\n");
+            perror("'execv() FAILED WITH ERROR");
+            printf("When trying to call '%s'\n\n", *command);
+            exit(EXIT_FAILURE);
+        } else {
+            wait( NULL );
+        }
+    } 
+
+    va_end(args);
+    return true;
 }
