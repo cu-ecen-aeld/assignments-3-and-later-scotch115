@@ -84,6 +84,7 @@ bool do_exec(int count, ...)
     pid_t response = fork();
     
     if (response == -1) {
+        va_end(args);
         perror("Fork failed");
         return false;
     }
@@ -91,8 +92,13 @@ bool do_exec(int count, ...)
     if (response == 0) {
         // Run Child PID Process
         execv( command[0], command );
+        exit(EXIT_FAILURE);
     } else {
-        wait( NULL );
+        int waitStatus;
+        if(waitpid(response, &waitStatus, 0) == -1) {
+            va_end(args);
+            return false;
+        }
     }
   
     va_end(args);
@@ -127,48 +133,39 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     *   The rest of the behaviour is same as do_exec()
     *
     */
-    char * filtered_command = malloc(strlen(command[1]) + 3);
-    if (!filtered_command) {
-        perror("Malloc failed");
-        return 1;
+    int file = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (file < 0) {
+        printf("Error opening %s", outputfile);
+        return false;
     }
-
-    sprintf(filtered_command, "'%s'", command[1]);
-
+    
     fflush(stdout);
+    
     pid_t child = fork();
+
     if (child == -1) {
+        close(file);
+        va_end(args);
         printf("Error! Fork returned '-1'.");
         exit(EXIT_FAILURE);
-    } else {
-        int file = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
-
-        if (file < 0) {
-            printf("Error opening %s", outputfile);
-            return false;
+    } else if (child == 0) {
+        if (dup2(file, 1) < 0) {
+            close(file);
+            exit(EXIT_FAILURE);
         }
-        dup2(file, 1);
+
         close(file);
 
-        // Handle non-absolute paths for commands
-        if (command[0][0] != '/') {
-            return false;
-        } else if (command[2][0] != '/') {
+        execv( command[0], command );
+
+    } else {
+        close(file);
+        int waitStatus;
+        if(waitpid(child, &waitStatus, 0) == -1) {
+            va_end(args);
             return false;
         }
-
-        printf("FILTER: %s\n", filtered_command);
-
-        int exec_res = execv( command[0], &filtered_command );
-        if (exec_res == -1) {
-            printf("\n");
-            perror("'execv() FAILED WITH ERROR");
-            printf("When trying to call '%s'\n\n", *command);
-            exit(EXIT_FAILURE);
-        } else {
-            wait( NULL );
-        }
-    } 
+    }
 
     va_end(args);
     return true;

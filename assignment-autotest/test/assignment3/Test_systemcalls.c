@@ -88,14 +88,14 @@ void test_exec_redirect_calls()
         free(test_string);
     }
 
-//     do_exec_redirect(REDIRECT_FILE, 2, "/bin/echo", "home is $HOME");
-//     test_string = malloc_first_line_of_file(REDIRECT_FILE);
-//     TEST_ASSERT_NOT_NULL_MESSAGE(test_string,"Nothing written to file at " REDIRECT_FILE );
-//     if( test_string != NULL ) {
-//         printf("execv /bin/echo home is $HOME returned %s\n", test_string);
-//         // Testing implementation with testfile.txt output 
-//         TEST_ASSERT_EQUAL_STRING_MESSAGE("home is $HOME", test_string, 
-//                     "The variable $HOME should not be expanded using execv()");
-//         free(test_string);
-//     }
+    do_exec_redirect(REDIRECT_FILE, 2, "/bin/echo", "home is $HOME");
+    test_string = malloc_first_line_of_file(REDIRECT_FILE);
+    TEST_ASSERT_NOT_NULL_MESSAGE(test_string,"Nothing written to file at " REDIRECT_FILE );
+    if( test_string != NULL ) {
+        printf("execv /bin/echo home is $HOME returned %s\n", test_string);
+        // Testing implementation with testfile.txt output 
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("home is $HOME", test_string, 
+                    "The variable $HOME should not be expanded using execv()");
+        free(test_string);
+    }
 }
