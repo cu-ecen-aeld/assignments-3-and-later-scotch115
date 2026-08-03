@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Dependency installation script for kernel build.
 # Author: Siddhant Jajoo.
 
