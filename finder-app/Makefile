@@ -1,4 +1,21 @@
-CROSS_COMPILE := aarch64-none-linux-gnu-gcc 
+ifdef CROSS_COMPILE
+	ifeq ($(CROSS_COMPILE),aarch64-none-linux-gnu-)
+		CC = aarch64-none-linux-gnu-gcc
+	else
+		CC = gcc
+	endif
+else
+	CC = gcc
+endif
+
+all:
+	#############################################################
+	# Make 'All' using CC                                       #
+	#############################################################
+	$(CC) -o writer writer.c
+	#############################################################
+	# Built 'writer' executable using 'aarch64-none-linux-gnu'! #
+	#############################################################
 default:
 	##############################
 	# Make Default               #
@@ -8,14 +25,6 @@ default:
 	# Built 'writer' executable! #
 	##############################
 
-all:
-	#############################################################
-	# Make 'All' using CC                                       #
-	#############################################################
-	$(CROSS_COMPILE) writer.c -o writer
-	#############################################################
-	# Built 'writer' executable using 'aarch64-none-linux-gnu'! #
-	#############################################################
 
 clean:
 	##################################################################
@@ -32,7 +41,7 @@ CROSS_COMPILE:
 	#############################################################
 	# Make Cross-Compile                                        #
 	#############################################################
-	$(CROSS_COMPILE) writer.c -o writer
+	$(CC) writer.c -o writer
 	#############################################################
 	# Built 'writer' executable using 'aarch64-none-linux-gnu'! #
 	#############################################################

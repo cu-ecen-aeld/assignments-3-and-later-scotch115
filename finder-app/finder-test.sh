@@ -57,13 +57,13 @@ fi
 for i in $( seq 1 $NUMFILES)
 do
 	# TODO: Modify this to run from /usr/bin 
-	/usr/bin/writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+	writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 	# ./writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 	# ./writer.sh "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
 # TODO: Print output of the finder command to file '/tmp/assignment4-result.txt'
-OUTPUTSTRING=$(/usr/bin/finder.sh "$WRITEDIR" "$WRITESTR")
+OUTPUTSTRING=$(finder.sh "$WRITEDIR" "$WRITESTR")
 echo $OUTPUTSTRING >> /tmp/assignment4-result.txt
 
 # remove temporary directories
