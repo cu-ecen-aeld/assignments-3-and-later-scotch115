@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 volatile sig_atomic_t listening = true;
+volatile bool daemonMode = false;
 
 void signal_handler(int signal) {
     // TODO: Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
@@ -24,6 +25,11 @@ void signal_handler(int signal) {
 
 int main(int argc, char *argv[])
 {
+    if (argc > 1) {
+        // Provide support for running in daemon mode per Assignment 5 Part 2 instructions
+        daemonMode = true;
+        syslog(LOG_INFO, "Started aesdsocket daemon");
+   }
     int _socket, _socketfd, _clientfd;
     char *host = NULL;
     char *port = "9000";
@@ -93,6 +99,14 @@ int main(int argc, char *argv[])
         }
         close(_socketfd);
         return -1;
+    }
+
+    // If `daemonMode` is true, call fork() to create a child/daemon process (re: Assignment 4)
+    if (daemonMode) {
+        pid_t pid = fork();
+        if (pid > 0) {
+            exit(EXIT_SUCCESS);
+        }
     }
     
     while(1) {
