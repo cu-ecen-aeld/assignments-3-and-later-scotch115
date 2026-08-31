@@ -16,7 +16,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-// For internal testing/printing to std
+// For internal testing/printing to tty
 #define DEBUG 0
 
 volatile sig_atomic_t listening = true;
