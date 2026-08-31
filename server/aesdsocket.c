@@ -17,14 +17,14 @@
 #include <sys/stat.h>
 
 // For internal testing/printing to std
-#define DEBUG 2
+#define DEBUG 0
 
 volatile sig_atomic_t listening = true;
 volatile sig_atomic_t timer_complete = 0;
 volatile bool daemonMode = false;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// TODO: Initialize linked-list
+// Initialize linked-list
 struct socketThread {
      int thread_id;
      pthread_t * thread;
@@ -64,7 +64,6 @@ void* timestamp() {
         if (timer_complete) {
             timer_complete = 0;
             clock_gettime(CLOCK_REALTIME, &ts);
-            // printf("Real-time: %ld seconds, %ld nanoseconds\n", ts.tv_sec, ts.tv_nsec);
             char timeStr[1024];
             struct tm *tmp;
             char buffer[1024];
@@ -128,7 +127,7 @@ void* timestamp() {
     }
 }
 
-// TODO: Pass socket function to thread
+// Pass socket function to thread
 void* socket_func(void* socket_param) {
     char buffer[1024];
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
@@ -331,8 +330,6 @@ int main(int argc, char *argv[])
         int client = accept(_socketfd, (struct sockaddr *)&clientAddress, &clientAddressLen);
         char host[NI_MAXHOST];
 
-        // NOTE: Thread flow recommendation: main > [accept new conn] > [create thread]
-               // > {add to list, then for each thread in list > (is thread complete) ? pthread_join to free memory : continue listening accept}
         // Logs message to the syslog "Accepted connection from XXXX", where XXXX is the IP Address of the connected client
         if (client != -1) {
             getnameinfo((struct sockaddr *)&clientAddress, clientAddressLen, host, sizeof(host), NULL, 0, NI_NUMERICHOST); 
@@ -341,10 +338,9 @@ int main(int argc, char *argv[])
         }    
 
 
-        // TODO: CREATE NEW THREAD HERE  
+        // CREATE NEW THREAD(S)  
         // NOTE: If any threads have completed use pthread_join() to join the new thread to an existing
         //       thread ID instead of creating a new one (and to avoid memory leaks)
-        
         // Allocate memory for struct within scope
         pthread_t thread;
         
@@ -370,14 +366,14 @@ int main(int argc, char *argv[])
         if (threadStatus != 0) {
             fprintf(stderr, "THREAD(s) NOT CREATED!");
             free(sockThread);
-            return 1; // TODO: Confirm that this fails correctly? Yk what I mean...
+            return 1;
         }
         
         if (DEBUG == 2) {
             fprintf(stdout, "Thread created with ID - %d\n", threadNum);
         }
         
-        // TODO: Add newly-created socket-thread to connectionList, and check for any other socket-threads that can be freed
+        // Add newly-created socket-thread to connectionList, and check for any other socket-threads that can be freed
         // Only update connectionList IF a new thread was created.
         struct connectionList * connection = malloc(sizeof(struct connectionList));
         if (connection == NULL) {
@@ -386,8 +382,6 @@ int main(int argc, char *argv[])
         }
         
         struct connectionList *cur;
-
-        // connection->threadID = threadNum;
         connection->thread = sockThread;
         
         SLIST_INSERT_HEAD(&head, connection, entries);
@@ -400,13 +394,12 @@ int main(int argc, char *argv[])
                 printf("THREAD COMPLETE: %d\n", cur->thread->thread_complete);
             }
             if (cur->thread->thread_complete == 1 ) {
-                // TODO: If thread finished, free memory with pthread_join()
+                // If thread finished, free memory with pthread_join()
                 pthread_join(*cur->thread->thread, NULL); 
                 printf("Joining/freeing Thread_%d!\n", cur->thread->thread_id);
              }
         }
     }
-    //? TODO - Free SLIST?
-    // Gracefully exits when SIGINT or SIGTERM are received; completing any open connection operations, closing any open sockets, and DELETING the /var/tmp/aesdsocketdata file
+    
     return 0;
 }
