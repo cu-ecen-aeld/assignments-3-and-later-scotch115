@@ -57,8 +57,6 @@ void sysPrint(int logLevel, char * message) {
         syslog(LOG_ERR, "sysPrint() received an invalid 'logLevel' argument!\n");
         fprintf(stderr, "sysPrint() received an invalid 'logLevel' argument!\n");
     }
-    
-
 }
 
 void signal_handler(int signal) {
