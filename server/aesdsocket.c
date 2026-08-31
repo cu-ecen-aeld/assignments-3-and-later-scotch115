@@ -40,10 +40,30 @@ struct connectionList {
     SLIST_ENTRY(connectionList) entries;
 };
 
+void sysPrint(int logLevel, char * message) {
+    // Level 0 => LOG_INFO
+    // Level 1 => LOG_ERR
+    // Level 2 => LOG_DEBUG
+    if (logLevel == 0) {
+        syslog(LOG_INFO, "%s\n", message);
+        printf("%s\n", message);
+    } else if (logLevel == 1) {
+        syslog(LOG_ERR, "%s\n", message);
+        fprintf(stderr, "%s\n", message);
+    } else if (logLevel == 2) {
+        syslog(LOG_DEBUG, "%s\n", message);
+        printf("%s\n", message);
+    } else {
+        syslog(LOG_ERR, "sysPrint() received an invalid 'logLevel' argument!\n");
+        fprintf(stderr, "sysPrint() received an invalid 'logLevel' argument!\n");
+    }
+    
+
+}
+
 void signal_handler(int signal) {
     // Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
-    printf("\nCAUGHT SIGNAL IN SIGNAL HANDLER AND EXITING\n");
-    syslog(LOG_INFO, "Caught signal, exiting\n");
+    sysPrint(0, "Caught signal, exiting.");
     remove("/var/tmp/aesdsocketdata");
     listening = false;
     // Gracefully exits when SIGINT or SIGTERM are received; completing any open connection operations, closing any open sockets, and DELETING the /var/tmp/aesdsocketdata file
@@ -51,7 +71,7 @@ void signal_handler(int signal) {
 }
 
 void time_handler(int sig) {
-    printf("TIMER DONE - WRITE TIMESTAMP\n");
+    sysPrint(0, "AESDSOCKET TIMER DONE - TIMESTAMPING FILE");
     timer_complete = 1;
     // Reset timer
     signal (sig, time_handler);
@@ -86,10 +106,9 @@ void* timestamp() {
 
             FILE * ptr = fopen("/var/tmp/aesdsocketdata", "a+");
             if (ptr == NULL) {
-                syslog(LOG_ERR, "ERROR! FILE '%s' COULD NOT BE OPENED!", "/var/tmp/aesdsocketdata");
+                sysPrint(1, "ERROR! '/var/tmp/aesdsocketdata' COULD NOT BE OPENED!");
             } else {
-                syslog(LOG_INFO, "WRITING TO FILE");
-                fprintf(stdout,"Writing to /var/tmp/aesdsocketdata\n");
+                sysPrint(0, "Writing to /var/tmp/aesdsocketdata");
             }
             
             ssize_t bytes = sizeof(timestamp_str);
@@ -150,25 +169,19 @@ void* socket_func(void* socket_param) {
                 // Implement mutex around file write operation(s) to prevent access issues
                 int threadLock = pthread_mutex_lock(socket_thread->thread_lock);
                 if (threadLock !=0) {
-                    if (DEBUG == 2) {
-                        printf("COULD NOT LOCK THREAD!\n");
-                    }
-                    syslog(LOG_ERR, "COULD NOT LOCK THREAD!\n");
+                    sysPrint(1, "Failed to lock socket thread!");
                 } else {
                      if (DEBUG == 2) {
-                        printf("LOCKED THREAD DURING WRITE!\n");
+                        printf("Successfully locked socket thread!\n");
                     }
                 }
                 numWritten += fwrite(buffer + numWritten, 1, bytes - numWritten, socket_thread->filePointer);
                 int threadUnlock = pthread_mutex_unlock(socket_thread->thread_lock);
                 if (threadUnlock != 0) {
-                    if (DEBUG == 2) {
-                        printf("COULD NOT UNLOCK THREAD!\n");
-                    }
-                    syslog(LOG_ERR, "COULD NOT UNLOCK THREAD!\n");
+                    sysPrint(1, "Failed to unlock socket thread!");
                 } else {
                     if (DEBUG == 2) {
-                        printf("UNLOCKED THREAD AFTER WRITE!\n");
+                        printf("Successfully unlocked socket thread!\n");
                     }
                 }
             }
@@ -178,7 +191,6 @@ void* socket_func(void* socket_param) {
             // Interpret newline characters '\n' as the end of each packet
             char *eol = strchr(buffer, '\n');
             if (eol != NULL) {
-                printf("EOL found\n");
                 int bytesRead;
                 fflush(socket_thread->filePointer);
                 rewind(socket_thread->filePointer);
@@ -190,9 +202,13 @@ void* socket_func(void* socket_param) {
                 // Set thread complete flag before exiting
                 socket_thread->thread_complete = true;
                 close(socket_thread->clientfd);
-                // Logs message to the syslog "Closed connection from XXXX" 
-                printf("\nClosed connection from %s\n", socket_thread->host);
-                syslog(LOG_INFO, "\nClosed connection from %s\n", socket_thread->host);
+                // Logs message to the syslog "Closed connection from XXXX"
+                char msg[200];
+                memset(msg, 0, sizeof(msg));
+                strcpy(msg, "Closed connection from ");
+                strcat(msg, socket_thread->host);
+            
+                sysPrint(0, msg);
                 // Reset to begin accepting new connections from clients in a "forever loop", until a SIGINT or SIGTERM is received
                 break;
             }
@@ -209,7 +225,7 @@ int main(int argc, char *argv[])
     if (argc > 1) {
         // Provide support for running in daemon mode per Assignment 5 Part 2 instructions
         daemonMode = true;
-        syslog(LOG_INFO, "Started aesdsocket daemon");
+        sysPrint(0, "Started aesdsocket daemon");
    }
     int _socket, _socketfd, _clientfd;
     char *host = NULL;
@@ -229,9 +245,9 @@ int main(int argc, char *argv[])
     alarm(10);
     pthread_t timer_th;
     if (pthread_create(&timer_th, NULL, &timestamp,  NULL) != 0) {
-        printf("FAILED TO START TIMER SERVICE!\n");
+        sysPrint(1, "FAILED TO START TIMER SERVICE!");
     } else {
-        printf("TIMER SERVICE STARTED.\n");
+        sysPrint(0, "TIMER SERVICE STARTED.");
     }
         
     memset(&info, 0, sizeof(info));
@@ -259,16 +275,15 @@ int main(int argc, char *argv[])
     FILE * fptr;
     fptr = fopen("/var/tmp/aesdsocketdata", "a+");
     if (fptr == NULL) {
-        syslog(LOG_ERR, "ERROR! FILE '%s' COULD NOT BE OPENED!", "/var/tmp/aesdsocketdata");
+        sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
     } else {
-        syslog(LOG_INFO, "WRITING TO FILE");
-        fprintf(stdout,"Writing to /var/tmp/aesdsocketdata\n");
+        sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
     }
 
     // Bind socket
     _socketfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (setsockopt(_socketfd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(reuseaddr)) == -1) {
-        syslog(LOG_ERR, "SETSOCKOPT FAILED");
+        sysPrint(1, "Failed to set socket options with 'setsockopt()'");
         freeaddrinfo(result);
         close(_socketfd);
         return -1;
@@ -281,17 +296,14 @@ int main(int argc, char *argv[])
     
     if (_socketfd == -1 || tryBind != 0 || tryListening != 0) {
         if (tryBind != 0) {
-            syslog(LOG_ERR, "BIND FAILED");
-            perror("bind() failed. Error");
+            sysPrint(1, "bind() failed.");
             close(_socketfd);
         }
         if (tryListening != 0) {
-            syslog(LOG_ERR, "LISTEN FAILED");
-            perror("listen() failed. Error");
+            sysPrint(1, "listen() failed.");
         }
         if (_socketfd == -1) {
-            syslog(LOG_ERR, "SOCKETFD IS -1");
-            perror("_socketfd is -1. Error");
+            sysPrint(1, "_socketfd is -1.");
         }
         close(_socketfd);
         return -1;
@@ -314,15 +326,11 @@ int main(int argc, char *argv[])
         }
 
         if (sigaction(SIGINT, &sigrecv, NULL) == -1) {
-            // Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
-            syslog(LOG_INFO, "Caught SIGINT signal, exiting\n");
-            remove("/var/tmp/aesdsocketdata");
+            break;
         }
 
         if (sigaction(SIGTERM, &sigrecv, NULL) == -1) {
-            // Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
-            syslog(LOG_INFO, "Caught SIGTERM signal, exiting\n");
-            remove("/var/tmp/aesdsocketdata");
+            break;
         }
       
         struct sockaddr clientAddress;
@@ -333,10 +341,12 @@ int main(int argc, char *argv[])
         // Logs message to the syslog "Accepted connection from XXXX", where XXXX is the IP Address of the connected client
         if (client != -1) {
             getnameinfo((struct sockaddr *)&clientAddress, clientAddressLen, host, sizeof(host), NULL, 0, NI_NUMERICHOST); 
-            syslog(LOG_INFO, "Accepted connection from %s\n", host);
-            printf("Accepted connection from %s\n", host);
+            char hostname[100];
+            memset(hostname, 0, sizeof(hostname));
+            strcpy(hostname, "Accepted connection from: ");
+            strcat(hostname, host);
+            sysPrint(0, hostname);
         }    
-
 
         // CREATE NEW THREAD(S)  
         // NOTE: If any threads have completed use pthread_join() to join the new thread to an existing
@@ -348,7 +358,7 @@ int main(int argc, char *argv[])
           
         // Return false if the memory cannot be allocated for the socket thread
         if (sockThread == NULL) {
-            printf("COULD NOT ALLOCATE MEMORY FOR SOCKET THREAD\n");
+            sysPrint(1, "Could not allocate memory for socket thread!");
             return false;
         }
 
@@ -364,7 +374,7 @@ int main(int argc, char *argv[])
         // Add thread/process to linked-list
         int threadStatus = pthread_create(&thread, NULL, &socket_func, sockThread);
         if (threadStatus != 0) {
-            fprintf(stderr, "THREAD(s) NOT CREATED!");
+            sysPrint(1, "Thread(s) not created!");
             free(sockThread);
             return 1;
         }
@@ -377,7 +387,7 @@ int main(int argc, char *argv[])
         // Only update connectionList IF a new thread was created.
         struct connectionList * connection = malloc(sizeof(struct connectionList));
         if (connection == NULL) {
-            perror("Could not allocate memory for connectionList!");
+            sysPrint(1, "Could not allocate memory for connectionList!");
             return 1;
         }
         
@@ -396,7 +406,9 @@ int main(int argc, char *argv[])
             if (cur->thread->thread_complete == 1 ) {
                 // If thread finished, free memory with pthread_join()
                 pthread_join(*cur->thread->thread, NULL); 
-                printf("Joining/freeing Thread_%d!\n", cur->thread->thread_id);
+                if (DEBUG == 2) {
+                    printf("Joining/freeing Thread_%d!\n", cur->thread->thread_id);
+                }
              }
         }
     }
