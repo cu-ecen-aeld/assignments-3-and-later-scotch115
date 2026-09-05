@@ -48,19 +48,13 @@ void sysPrint(int logLevel, char * message) {
     // Level 2 => LOG_DEBUG
     if (logLevel == 0) {
         syslog(LOG_INFO, "%s\n", message);
-        if (daemonMode != 1) {
-            printf("%s\n", message);
-        }
+        printf("%s\n", message);
     } else if (logLevel == 1) {
         syslog(LOG_ERR, "%s\n", message);
-        if (daemonMode != 1) {
-            printf("%s\n", message);
-        }
+        printf("%s\n", message);
     } else if (logLevel == 2) {
         syslog(LOG_DEBUG, "%s\n", message);
-        if (daemonMode != 1) {
-            printf("%s\n", message);
-        }
+        printf("%s\n", message);
     } else {
         syslog(LOG_ERR, "sysPrint() received an invalid 'logLevel' argument!\n");
         fprintf(stderr, "sysPrint() received an invalid 'logLevel' argument!\n");
@@ -92,7 +86,6 @@ void timestamp(union sigval sigval) {
     }
     if (strftime(timeStr, 1024, "%a, %d %b %Y %T %z", tmp) == 0) {
         fprintf(stderr, "strftime returned 0\n");
-        // exit(EXIT_FAILURE);
     }
     char * timestamp_str = calloc(1024, sizeof(char));
     strcpy(timestamp_str, "timestamp: ");
