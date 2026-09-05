@@ -76,7 +76,7 @@ void time_handler(int sig) {
     alarm(10);
 }
 
-void* timestamp() {
+void* timestamp(void * time_) {
     struct timespec ts;
     while (1) {
         if (timer_complete) {
@@ -108,9 +108,6 @@ void* timestamp() {
             } else {
                 sysPrint(0, "Writing to /var/tmp/aesdsocketdata");
             }
-            
-            ssize_t bytes = sizeof(timestamp_str);
-            int numWritten = 0;
 
             int locked = pthread_mutex_lock(&mutex);
             if (locked != 0) {
@@ -145,7 +142,7 @@ void* timestamp() {
 }
 
 // Pass socket function to thread
-void* socket_func(void* socket_param) {
+void * socket_func(void* socket_param) {
     char buffer[1024];
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
     if (DEBUG > 1) {
@@ -216,6 +213,7 @@ void* socket_func(void* socket_param) {
     if (DEBUG > 1) {
         printf("####################### EXITED SOCKETFUNC ########################\n");
     }
+    return 0;
 };
 
 int main(int argc, char *argv[])
@@ -225,12 +223,12 @@ int main(int argc, char *argv[])
         daemonMode = true;
         sysPrint(0, "Started aesdsocket daemon");
    }
-    int _socket, _socketfd, _clientfd;
+    int _socket, _socketfd;
     char *host = NULL;
     char *port = "9000";
     int reuseaddr = 1;
     struct addrinfo info;
-    struct addrinfo *result, *rp;
+    struct addrinfo *result;
     openlog ("socket-server", LOG_DEBUG | LOG_ERR, LOG_USER);
 
     // Initialize thread ID tracking variable

@@ -1,14 +1,10 @@
-ifdef CROSS_COMPILE
-        ifeq ($(CROSS_COMPILE),aarch64-none-linux-gnu-)
-                CC = aarch64-none-linux-gnu-gcc
-        else
-                CC = gcc
-        endif
-else
-        CC = gcc
-endif
+CROSS_COMPILE ?= $(CROSS_COMPILE)gcc
+CFLAGS ?= -g -Wall -Werror
+TARGET ?= aesdsocket
+LDFLAGS ?= -lpthread -lrt
 
 all:
-	$(CC) aesdsocket.c -o aesdsocket
-default:
-	$(CC) aesdsocket.c -o aesdsocket
+	$(CC) $(CFLAGS) $(TARGET).c -o $(TARGET) $(INCLUDES) $(LDFLAGS)
+
+clean:
+	rm -f aesdsocket
