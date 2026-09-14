@@ -39,7 +39,9 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(
     int sizeCheck = 0;
     struct aesd_buffer_entry * entry;
     char_check = char_offset;
+
     AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index) {
+      // printf("Entry has size %ld and value: %s", entry->size, entry->buffptr);
       // printf("Char Check value is: %ld\n", char_check);
       sizeCheck += entry->size;
       // Check if the "char_offset" is bigger or smaller than the entry size
@@ -66,7 +68,6 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(
         return &buffer->entry[index];
       }
     }
-
     return NULL;
 }
 
@@ -92,31 +93,25 @@ void aesd_circular_buffer_add_entry(
       AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index) {
         if (index < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED - 1) {
           entry->buffptr = buffer->entry[index+1].buffptr;
+          entry->size = strlen(buffer->entry[index+1].buffptr);
         } else {
           entry->buffptr = buffer->entry[index+1].buffptr;
           buffer->entry[index+1].buffptr = NULL;
         }
       }    
       buffer->in_offs = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED - 1;
-      printf("%s", add_entry->buffptr);
-      printf("BUFFER FULL\n");
+      // printf("%s", add_entry->buffptr);
+      // printf("BUFFER FULL\n");
     }
 
-    printf("Input offset: %d ; Output offset: %d\n", buffer->in_offs, buffer->out_offs);
+    // printf("Input offset: %d ; Output offset: %d\n", buffer->in_offs, buffer->out_offs);
 
     // Loop through the buffer entry array to see if we have space to add a new entry
     buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
-    buffer->entry[buffer->in_offs].size = add_entry->size;
+    buffer->entry[buffer->in_offs].size = strlen(add_entry->buffptr);
     buffer->in_offs += 1;
     if (buffer->full == 1) {
       buffer->out_offs += buffer->in_offs;
-    }
-
-    printf("== POST ADDITION SUMMARY ==\n");
-    uint8_t index = 0;
-    struct aesd_buffer_entry * entry;
-    AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index) {
-      printf("Index %d: %s", index, entry->buffptr);
     }
   }
 
