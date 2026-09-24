@@ -20,6 +20,7 @@
 
 // For internal testing/printing to tty
 #define DEBUG 0
+#define USE_AESD_CHAR_DEVICE 1
 
 volatile sig_atomic_t listening = true;
 volatile sig_atomic_t timer_setup_complete = 0;
@@ -64,7 +65,9 @@ void sysPrint(int logLevel, char * message) {
 void signal_handler(int signal) {
     // Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
     sysPrint(0, "Caught signal, exiting.");
-    remove("/var/tmp/aesdsocketdata");
+    if (USE_AESD_CHAR_DEVICE == 0) {
+        remove("/var/tmp/aesdsocketdata");
+    }
     listening = false;
     // Gracefully exits when SIGINT or SIGTERM are received; completing any open connection operations, closing any open sockets, and DELETING the /var/tmp/aesdsocketdata file
     exit(EXIT_SUCCESS);
@@ -262,6 +265,7 @@ int main(int argc, char *argv[])
             close(fd);
         }
     }
+
     timer_t timer_id;
     // DAEMON STARTS HERE //
     while(1) {
@@ -277,9 +281,10 @@ int main(int argc, char *argv[])
         int threadNum = 0;
         SLIST_HEAD(listHead, connectionList) head;
         SLIST_INIT(&head);
-        
-        // Initialize new timer function
-        start_timer(&timer_id, 10);
+        if (USE_AESD_CHAR_DEVICE == 0) {
+            // Initialize new timer function
+            start_timer(&timer_id, 10);
+        }
     
         memset(&info, 0, sizeof(info));
         info.ai_family = AF_INET;
@@ -302,13 +307,15 @@ int main(int argc, char *argv[])
         }
         fprintf(stdout, "Address info found!\n");
         
-        // Setup file pointer and filepath
-        FILE * fptr;
-        fptr = fopen("/var/tmp/aesdsocketdata", "a+");
-        if (fptr == NULL) {
-            sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
-        } else {
-            sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
+        if (USE_AESD_CHAR_DEVICE == 0) {
+            // Setup file pointer and filepath
+            FILE * fptr;
+            fptr = fopen("/var/tmp/aesdsocketdata", "a+");
+            if (fptr == NULL) {
+                sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
+            } else {
+                sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
+            }
         }
     
         // Bind socket
@@ -384,12 +391,17 @@ int main(int argc, char *argv[])
                 sysPrint(1, "Could not allocate memory for socket thread!");
                 return false;
             }
-    
+
             // Create new thread on socket accept()
             sockThread->thread_lock = &mutex;
             sockThread->thread_complete = false;
             sockThread->clientfd = client;
-            sockThread->filePointer = fptr;
+            if (USE_AESD_CHAR_DRIVER == 0) {    
+                sockThread->filePointer = fptr;
+            } else {
+                int aesdchardev_fd = open("/dev/aesdchar", O_RDWR);
+                sockThread->filePointer = aesdchardev_fd;
+            }
             sockThread->host = host;
             sockThread->thread = &thread;
             sockThread->thread_id = threadNum;
@@ -438,8 +450,10 @@ int main(int argc, char *argv[])
         return 0;
     }
     
-    // Syscall to cleanup timer once main function ends
-    timer_delete(&timer_id);
+    if (USE_AESD_CHAR_DEVICE == 0) {
+        // Syscall to cleanup timer once main function ends
+        timer_delete(&timer_id);
+    }
         
     return 0;
 }
