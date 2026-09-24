@@ -28,6 +28,7 @@ MODULE_AUTHOR("Jordan Gamache"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
+struct aesd_circular_buffer kernel_buffer;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
@@ -37,6 +38,7 @@ int aesd_open(struct inode *inode, struct file *filp)
      */
     struct aesd_dev *dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
     filp->private_data = dev;
+    aesd_circular_buffer_init(&kernel_buffer);
 
     return 0;
 }
@@ -68,10 +70,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_p
     if (*f_pos + count > dev->size)
         count = dev->size - *f_pos;
 
-    // TODO: Implement method of getting DATAPTR, start_pos, and off_pos.
-    if (copy_to_user(buf, &dev->data, count)) {
-        retval = -EFAULT;
-        goto out;
+    int index = 0;
+    struct aesd_buffer_entry * entry = kmalloc(count * sizeof(struct aesd_buffer_entry), GFP_KERNEL);
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, &kernel_buffer, index) {
+        if (copy_to_user(buf, entry->buffptr, count)) {
+            retval = -EFAULT;
+            // goto out;
+        }
     }
 
     *f_pos += count;
@@ -94,14 +99,17 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count, loff
     if (down_interruptible(&dev->sem))
         return -ERESTARTSYS;
     
-    // struct aesd_buffer_entry entry;
-    // entry->buffptr = kmalloc(count * sizeof(struct aesd_buffer_entry), GFP_KERNEL);
-    // entry->size = kmalloc(count * sizeof(buf)); 
-    
-    if (copy_from_user(&dev->data, buf, count)) {
+    char * writeCmd = kmalloc(count * sizeof(char), GFP_KERNEL);
+    if (copy_from_user(&writeCmd, buf, count)) {
         retval = -EFAULT;
-        goto out;
+        // goto out;
     }
+
+    struct aesd_buffer_entry kbuffer_entry;
+    kbuffer_entry.entry = writeCmd;
+    kbuffer_entry.size = strlen(writeCmd);
+    
+    aesd_circular_buffer_add_entry(&kernel_buffer, &entry);
 
     *f_pos += count;
     retval = count;
