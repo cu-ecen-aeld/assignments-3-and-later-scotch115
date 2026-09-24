@@ -28,6 +28,9 @@ struct aesd_dev
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
      */
+    unsigned long size;
+    char * data; // Char array ?
+    struct semaphore sem; /* Mutex/semaphore structure */ 
     struct cdev cdev;     /* Char device structure      */
 };
 

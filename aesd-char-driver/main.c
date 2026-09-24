@@ -16,12 +16,15 @@
 #include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
+#include <linux/kernel.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+#include "aesd-circular-buffer.c"
+#include "aesd-circular-buffer.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Jordan Gamache"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -32,6 +35,9 @@ int aesd_open(struct inode *inode, struct file *filp)
     /**
      * TODO: handle open
      */
+    struct aesd_dev *dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    filp->private_data = dev;
+
     return 0;
 }
 
@@ -41,29 +47,73 @@ int aesd_release(struct inode *inode, struct file *filp)
     /**
      * TODO: handle release
      */
+    
+     
     return 0;
 }
 
-ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
-                loff_t *f_pos)
+// Transfer data FROM KERNELSPACE (driver) TO USERSPACE
+ssize_t aesd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     /**
      * TODO: handle read
      */
-    return retval;
+    struct aesd_dev *dev = filp->private_data;
+    if (down_interruptible(&dev->sem))
+        return -ERESTARTSYS;
+    if (*f_pos >= dev->size)
+        goto out;
+    if (*f_pos + count > dev->size)
+        count = dev->size - *f_pos;
+
+    // TODO: Implement method of getting DATAPTR, start_pos, and off_pos.
+    if (copy_to_user(buf, &dev->data, count)) {
+        retval = -EFAULT;
+        goto out;
+    }
+
+    *f_pos += count;
+    retval = count;
+    
+    out:
+        up(&dev->sem);
+        return retval;
 }
 
-ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
-                loff_t *f_pos)
+// Transfer data FROM USERSPACE TO KERNELSPACE (driver)
+ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     /**
      * TODO: handle write
      */
-    return retval;
+    struct aesd_dev *dev = filp->private_data;
+    if (down_interruptible(&dev->sem))
+        return -ERESTARTSYS;
+    
+    // struct aesd_buffer_entry entry;
+    // entry->buffptr = kmalloc(count * sizeof(struct aesd_buffer_entry), GFP_KERNEL);
+    // entry->size = kmalloc(count * sizeof(buf)); 
+    
+    if (copy_from_user(&dev->data, buf, count)) {
+        retval = -EFAULT;
+        goto out;
+    }
+
+    *f_pos += count;
+    retval = count;
+
+    // Update size
+    if (dev->size < *f_pos)
+        dev->size = *f_pos;
+    
+    out: 
+        up(&dev->sem);
+        return retval;
+    
 }
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
