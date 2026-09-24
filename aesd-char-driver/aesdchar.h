@@ -5,6 +5,8 @@
  *      Author: Dan Walkes
  */
 
+ #include "aesd-circular-buffer.h"
+
 #ifndef AESD_CHAR_DRIVER_AESDCHAR_H_
 #define AESD_CHAR_DRIVER_AESDCHAR_H_
 
@@ -28,10 +30,12 @@ struct aesd_dev
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
      */
-    unsigned long size;
-    char * data; // Char array ?
-    struct semaphore sem; /* Mutex/semaphore structure */ 
     struct cdev cdev;     /* Char device structure      */
+    struct aesd_circular_buffer kernel_buffer;
+    char *buffered_entry;
+    size_t buffered_size;
+    struct mutex lock; /* Mutex/semaphore structure */ 
+    // struct semaphore sem; /* Mutex/semaphore structure */ 
 };
 
 
