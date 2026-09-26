@@ -102,5 +102,10 @@ void aesd_circular_buffer_add_entry(
 */
 void aesd_circular_buffer_init(struct aesd_circular_buffer *buffer)
 {
+    #ifdef __KERNEL__
+      printk(KERN_INFO "AESD-CIRCULAR-BUFFER INITIALIZED!!");
+    #else
+      printf("AESD-CIRCULAR-BUFFER INITIALIZED!!");
+    #endif
     memset(buffer,0,sizeof(struct aesd_circular_buffer));
 }
