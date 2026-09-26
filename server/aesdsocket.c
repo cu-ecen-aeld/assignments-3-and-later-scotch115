@@ -167,25 +167,6 @@ void * socket_func(void* socket_param) {
     int bytesRead;
     uint32_t bufSize = (sizeof(buffer)/sizeof(buffer[0]));
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
-    // Setup file pointer and filepath
-    // Assignment 8 Update: Modified file access to use syscalls instead of buffered calls (i.e. fopen)
-    //                      to support kernel-space/driver operations
-    int fptr;
-    if (USE_AESD_CHAR_DEVICE == 0) {
-        fptr = open("/var/tmp/aesdsocketdata", O_CREAT | O_RDWR, S_IRWXU);
-        if (fptr < 0) {
-            sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
-        } else {
-            sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
-        }
-    } else {
-        fptr = open("/dev/aesdchar", O_CREAT | O_RDWR, S_IRWXU);
-        if (fptr < 0) {
-          sysPrint(1, "Could not open '/dev/aesdchar'.");
-        } else {
-          sysPrint(0, "Writing to '/dev/aesdchar'.");
-        }
-    }
     if (DEBUG > 1) {
         printf("####################### ENTERED SOCKETFUNC ########################\n");
     }
@@ -206,6 +187,25 @@ void * socket_func(void* socket_param) {
         if (DEBUG == 2) {
             printf("Successfully locked socket thread!\n");
         }
+        // Setup file pointer and filepath
+        // Assignment 8 Update: Modified file access to use syscalls instead of buffered calls (i.e. fopen)
+        //                      to support kernel-space/driver operations
+        int fptr;
+        if (USE_AESD_CHAR_DEVICE == 0) {
+            fptr = open("/var/tmp/aesdsocketdata", O_CREAT | O_RDWR, S_IRWXU);
+            if (fptr < 0) {
+                sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
+            } else {
+                sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
+            }
+        } else {
+            fptr = open("/dev/aesdchar", O_CREAT | O_RDWR, S_IRWXU);
+            if (fptr < 0) {
+              sysPrint(1, "Could not open '/dev/aesdchar'.");
+            } else {
+              sysPrint(0, "Writing to '/dev/aesdchar'.");
+            }
+        }
         lseek(fptr, 0, SEEK_END);
         int bytesWritten = write(fptr, buffer, incomingBytes);
         if (bytesWritten == -1) {
@@ -221,8 +221,8 @@ void * socket_func(void* socket_param) {
         if (DEBUG > 1) {
             printf("FILEBUFFER:\n-----\n%s\n", buffer);
         }
+        close(fptr);
     }
-    close(fptr);
     
     int threadUnlock = pthread_mutex_unlock(socket_thread->thread_lock);
     if (threadUnlock != 0) {
