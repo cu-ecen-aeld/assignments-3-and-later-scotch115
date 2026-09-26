@@ -33,7 +33,7 @@ struct socketThread {
      pthread_t * thread;
      pthread_mutex_t * thread_lock;
      int clientfd;
-     int filePointer;
+     // int filePointer;
      char * host;
      bool thread_complete;
 };
@@ -167,6 +167,25 @@ void * socket_func(void* socket_param) {
     int bytesRead;
     uint32_t bufSize = (sizeof(buffer)/sizeof(buffer[0]));
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
+    // Setup file pointer and filepath
+    // Assignment 8 Update: Modified file access to use syscalls instead of buffered calls (i.e. fopen)
+    //                      to support kernel-space/driver operations
+    int fptr;
+    if (USE_AESD_CHAR_DEVICE == 0) {
+        fptr = open("/var/tmp/aesdsocketdata", O_CREAT | O_RDWR, S_IRWXU);
+        if (fptr < 0) {
+            sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
+        } else {
+            sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
+        }
+    } else {
+        fptr = open("/dev/aesdchar", O_CREAT | O_RDWR, S_IRWXU);
+        if (fptr < 0) {
+          sysPrint(1, "Could not open '/dev/aesdchar'.");
+        } else {
+          sysPrint(0, "Writing to '/dev/aesdchar'.");
+        }
+    }
     if (DEBUG > 1) {
         printf("####################### ENTERED SOCKETFUNC ########################\n");
     }
@@ -187,15 +206,15 @@ void * socket_func(void* socket_param) {
         if (DEBUG == 2) {
             printf("Successfully locked socket thread!\n");
         }
-        lseek(socket_thread->filePointer, 0, SEEK_END);
-        int bytesWritten = write(socket_thread->filePointer, buffer, incomingBytes);
+        lseek(fptr, 0, SEEK_END);
+        int bytesWritten = write(fptr, buffer, incomingBytes);
         if (bytesWritten == -1) {
             sysPrint(1, "Failed to write data to file.");
         }
 
-        lseek(socket_thread->filePointer, 0, SEEK_SET);
+        lseek(fptr, 0, SEEK_SET);
         memset(buffer, 0, sizeof(buffer));
-        bytesRead = read(socket_thread->filePointer, buffer, sizeof(buffer));
+        bytesRead = read(fptr, buffer, sizeof(buffer));
         if (bytesRead == -1) {
             sysPrint(1, "Failed to read data from file.");
         }
@@ -203,6 +222,7 @@ void * socket_func(void* socket_param) {
             printf("FILEBUFFER:\n-----\n%s\n", buffer);
         }
     }
+    close(fptr);
     
     int threadUnlock = pthread_mutex_unlock(socket_thread->thread_lock);
     if (threadUnlock != 0) {
@@ -309,25 +329,6 @@ int main(int argc, char *argv[])
         }
         fprintf(stdout, "Address info found!\n");
         
-        // Setup file pointer and filepath
-        // Assignment 8 Update: Modified file access to use syscalls instead of buffered calls (i.e. fopen)
-        //                      to support kernel-space/driver operations
-        int fptr;
-        if (USE_AESD_CHAR_DEVICE == 0) {
-            fptr = open("/var/tmp/aesdsocketdata", O_CREAT | O_RDWR, S_IRWXU);
-            if (fptr < 0) {
-                sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
-            } else {
-                sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
-            }
-        } else {
-            fptr = open("/dev/aesdchar", O_CREAT | O_RDWR, S_IRWXU);
-            if (fptr < 0) {
-              sysPrint(1, "Could not open '/dev/aesdchar'.");
-            } else {
-              sysPrint(0, "Writing to '/dev/aesdchar'.");
-            }
-        }
     
         // Bind socket
         _socketfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
@@ -407,7 +408,7 @@ int main(int argc, char *argv[])
             sockThread->thread_lock = &mutex;
             sockThread->thread_complete = false;
             sockThread->clientfd = client;
-            sockThread->filePointer = fptr;
+            // sockThread->filePointer = fptr;
             sockThread->host = host;
             sockThread->thread = &thread;
             sockThread->thread_id = threadNum;
@@ -453,7 +454,7 @@ int main(int argc, char *argv[])
                  }
             }
         }
-        close(fptr);
+        // close(fptr);
         return 0;
     }
     
