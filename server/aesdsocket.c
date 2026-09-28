@@ -21,6 +21,13 @@
 // For internal testing/printing to tty
 #define DEBUG 0
 #define USE_AESD_CHAR_DEVICE 1
+#define DATA_SIZE 20480
+
+#if (USE_AESD_CHAR_DEVICE == 1)
+    #define DATA_FILE "/dev/aesdchar"
+#else
+    #define DATA_FILE "/var/tmp/aesdsocketdata"
+#endif
 
 volatile sig_atomic_t listening = true;
 volatile sig_atomic_t timer_setup_complete = 0;
@@ -33,7 +40,6 @@ struct socketThread {
      pthread_t * thread;
      pthread_mutex_t * thread_lock;
      int clientfd;
-     // int filePointer;
      char * host;
      bool thread_complete;
 };
@@ -66,13 +72,14 @@ void signal_handler(int signal) {
     // Logs message to syslog "Caught signal, exiting" when SIGINT or SIGTERM are received
     sysPrint(0, "Caught signal, exiting.");
     if (USE_AESD_CHAR_DEVICE == 0) {
-        remove("/var/tmp/aesdsocketdata");
+        remove(DATA_FILE);
     }
     listening = false;
     // Gracefully exits when SIGINT or SIGTERM are received; completing any open connection operations, closing any open sockets, and DELETING the /var/tmp/aesdsocketdata file
     exit(EXIT_SUCCESS);
 }
 
+#if (USE_AESD_CHAR_DEVICE != 1)
 // New and improved timer thread function
 void timestamp(union sigval sigval) {
     (void)sigval;
@@ -158,86 +165,83 @@ int start_timer(timer_t * timer_id, int seconds) {
     *timer_id = timerid;
     return 0;
 }
+#endif
 
 // Pass socket function to thread
 // Assignment 8 Update: Had to completely rework how ${socket_thread->filePointer} was utilized to support Assignment 8
 //                      kernel driver requirements. 
 void * socket_func(void* socket_param) {
-    char buffer[100000];
-    int bytesRead;
-    uint32_t bufSize = (sizeof(buffer)/sizeof(buffer[0]));
+    char buffer[DATA_SIZE];
+    char * socketData = NULL;
+    size_t bufSize = 0;
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
+    ssize_t incomingBytes;
     if (DEBUG > 1) {
         printf("####################### ENTERED SOCKETFUNC ########################\n");
     }
-    memset(buffer, 0, sizeof(buffer));
-    int incomingBytes = recv(socket_thread->clientfd, buffer, bufSize, 0);    
-    if ((incomingBytes == 1)) {
-        sysPrint(1, "Could not receive data from the connected socket client.");
-    } else {
-        // Add null terminator to the end of the buffer string to signal the end of the incoming bytes for this cycle
-        buffer[incomingBytes] = '\0';
-    }
-    
-    // Implement mutex around file write operation(s) to prevent access issues
-    int threadLock = pthread_mutex_lock(socket_thread->thread_lock);
-    if (threadLock != 0) {
-        sysPrint(1, "Failed to lock socket thread!");
-    } else {
-        if (DEBUG == 2) {
-            printf("Successfully locked socket thread!\n");
-        }
-        // Setup file pointer and filepath
-        // Assignment 8 Update: Modified file access to use syscalls instead of buffered calls (i.e. fopen)
-        //                      to support kernel-space/driver operations
-        int fptr;
-        if (USE_AESD_CHAR_DEVICE == 0) {
-            fptr = open("/var/tmp/aesdsocketdata", O_CREAT | O_RDWR, S_IRWXU);
-            if (fptr < 0) {
-                sysPrint(1, "Could not open '/var/tmp/aesdsocketdata'.");
-            } else {
-                sysPrint(0, "Writing to '/var/tmp/aesdsocketdata'.");
-            }
-        } else {
-            fptr = open("/dev/aesdchar", O_CREAT | O_RDWR, S_IRWXU);
-            if (fptr < 0) {
-              sysPrint(1, "Could not open '/dev/aesdchar'.");
-            } else {
-              sysPrint(0, "Writing to '/dev/aesdchar'.");
-            }
-        }
-        lseek(fptr, 0, SEEK_END);
-        int bytesWritten = write(fptr, buffer, incomingBytes);
-        if (bytesWritten == -1) {
-            sysPrint(1, "Failed to write data to file.");
+    // memset(buffer, 0, sizeof(buffer));
+    while ((incomingBytes = recv(socket_thread->clientfd, buffer, sizeof(buffer), 0)) > 0) {
+        char *incoming = realloc(socketData, bufSize + incomingBytes + 1);
+        if (incoming == NULL) {
+            sysPrint(1, "Failed to allocate memory for incoming socket buffer!");
+            break;
         }
 
-        lseek(fptr, 0, SEEK_SET);
-        memset(buffer, 0, sizeof(buffer));
-        bytesRead = read(fptr, buffer, sizeof(buffer));
-        if (bytesRead == -1) {
-            sysPrint(1, "Failed to read data from file.");
+        socketData = incoming;
+
+        memcpy(socketData + bufSize, buffer, incomingBytes);
+        bufSize += incomingBytes;
+        socketData[bufSize] = '\0';
+
+        if (strchr(socketData, '\n') != NULL) {
+            // Implement mutex around file write operation(s) to prevent access issues
+            int threadLock = pthread_mutex_lock(socket_thread->thread_lock);
+            if (threadLock != 0) {
+                sysPrint(1, "Failed to lock socket thread!");
+            } else {
+                if (DEBUG == 2) {
+                    printf("Successfully locked socket thread!\n");
+                }
+            }
+            int fptr = open(DATA_FILE, O_CREAT | O_APPEND | O_WRONLY, 0644);
+            if (fptr != -1) {
+                write(fptr, buffer, incomingBytes);
+                close(fptr);
+            }
+
+            fptr = open(DATA_FILE, O_RDONLY);
+            if (fptr != -1) {
+                char sendBuffer[DATA_SIZE];
+                ssize_t bytesRead;
+                while ((bytesRead = read(fptr, sendBuffer, sizeof(sendBuffer))) > 0) {
+                    send(socket_thread->clientfd, sendBuffer, bytesRead, 0);
+                }
+                close(fptr);
+                if (DEBUG > 1) {
+                    printf("FILE BUFFER: %s\n", sendBuffer);
+                }
+            }
+                      
+            int threadUnlock = pthread_mutex_unlock(socket_thread->thread_lock);
+            if (threadUnlock != 0) {
+                sysPrint(1, "Failed to unlock socket thread!");
+            } else {
+                if (DEBUG == 2) {
+                    printf("Successfully unlocked socket thread!\n");
+                }
+            }
+
+            free(socketData);
+            socketData = NULL;
+            bufSize = 0;
         }
-        if (DEBUG > 1) {
-            printf("FILEBUFFER:\n-----\n%s\n", buffer);
-        }
-        close(fptr);
+    }
+
+    if (socketData != NULL) {
+        free(socketData);
     }
     
-    int threadUnlock = pthread_mutex_unlock(socket_thread->thread_lock);
-    if (threadUnlock != 0) {
-        sysPrint(1, "Failed to unlock socket thread!");
-    } else {
-        if (DEBUG == 2) {
-            printf("Successfully unlocked socket thread!\n");
-        }
-    }
-    
-    int bytesSent = send(socket_thread->clientfd, buffer, bytesRead, 0);
-    if (bytesSent == -1) {
-        sysPrint(1, "Failed to send data back to the connected socket client.");
-    }
-    // Set thread complete flag before exiting
+    close(socket_thread->clientfd);    
     socket_thread->thread_complete = true;
     
     // Logs message to the syslog "Closed connection from XXXX"
@@ -246,7 +250,7 @@ void * socket_func(void* socket_param) {
     strcpy(msg, "Closed connection from ");
     strcat(msg, socket_thread->host);
     sysPrint(0, msg);
-    close(socket_thread->clientfd);    
+    // return NULL;
     return 0;
 };
 
@@ -287,11 +291,11 @@ int main(int argc, char *argv[])
             close(fd);
         }
     }
-
+    #if (USE_AESD_CHAR_DEVICE == 0)
     timer_t timer_id;
+    #endif
     // DAEMON STARTS HERE //
     while(1) {
-    
         int _socket, _socketfd;
         char *host = NULL;
         char *port = "9000";
@@ -303,10 +307,10 @@ int main(int argc, char *argv[])
         int threadNum = 0;
         SLIST_HEAD(listHead, connectionList) head;
         SLIST_INIT(&head);
-        if (USE_AESD_CHAR_DEVICE == 0) {
+        #if (USE_AESD_CHAR_DEVICE == 0)
             // Initialize new timer function
             start_timer(&timer_id, 10);
-        }
+        #endif
     
         memset(&info, 0, sizeof(info));
         info.ai_family = AF_INET;
@@ -329,7 +333,7 @@ int main(int argc, char *argv[])
         }
         fprintf(stdout, "Address info found!\n");
         
-    
+
         // Bind socket
         _socketfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
         if (setsockopt(_socketfd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(reuseaddr)) == -1) {
@@ -403,12 +407,11 @@ int main(int argc, char *argv[])
                 sysPrint(1, "Could not allocate memory for socket thread!");
                 return false;
             }
-
+            
             // Create new thread on socket accept()
             sockThread->thread_lock = &mutex;
             sockThread->thread_complete = false;
             sockThread->clientfd = client;
-            // sockThread->filePointer = fptr;
             sockThread->host = host;
             sockThread->thread = &thread;
             sockThread->thread_id = threadNum;
@@ -451,17 +454,16 @@ int main(int argc, char *argv[])
                     if (DEBUG == 2) {
                         printf("Joining/freeing Thread_%d!\n", cur->thread->thread_id);
                     }
-                 }
+                }
             }
         }
-        // close(fptr);
         return 0;
     }
     
-    if (USE_AESD_CHAR_DEVICE == 0) {
+    #if (USE_AESD_CHAR_DEVICE == 0)
         // Syscall to cleanup timer once main function ends
         timer_delete(&timer_id);
-    }
+    #endif
         
     return 0;
 }

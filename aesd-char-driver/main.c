@@ -290,6 +290,5 @@ void aesd_cleanup_module(void)
 }
 
 
-
 module_init(aesd_init_module);
 module_exit(aesd_cleanup_module);
