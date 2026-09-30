@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <time.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 // For internal testing/printing to tty
 #define DEBUG 0
@@ -170,12 +171,16 @@ int start_timer(timer_t * timer_id, int seconds) {
 // Pass socket function to thread
 // Assignment 8 Update: Had to completely rework how ${socket_thread->filePointer} was utilized to support Assignment 8
 //                      kernel driver requirements. 
+// Assignment 9 Update: Implemented support for parsing ioctl commands
 void * socket_func(void* socket_param) {
     char buffer[DATA_SIZE];
     char * socketData = NULL;
     size_t bufSize = 0;
     struct socketThread* socket_thread = (struct socketThread *) socket_param;
     ssize_t incomingBytes;
+    const char * ioctlCmd = "AESDCHAR_IOCSEEKTO:";
+    struct aesd_seekto seekPos;
+
     if (DEBUG > 1) {
         printf("####################### ENTERED SOCKETFUNC ########################\n");
     }
@@ -203,22 +208,50 @@ void * socket_func(void* socket_param) {
                     printf("Successfully locked socket thread!\n");
                 }
             }
-            int fptr = open(DATA_FILE, O_CREAT | O_APPEND | O_WRONLY, 0644);
-            if (fptr != -1) {
-                write(fptr, buffer, incomingBytes);
-                close(fptr);
-            }
-
-            fptr = open(DATA_FILE, O_RDONLY);
-            if (fptr != -1) {
-                char sendBuffer[DATA_SIZE];
-                ssize_t bytesRead;
-                while ((bytesRead = read(fptr, sendBuffer, sizeof(sendBuffer))) > 0) {
-                    send(socket_thread->clientfd, sendBuffer, bytesRead, 0);
+            
+            // Check if it is an IOCTL command and handle accordingly
+            if (strncmp(socketData, ioctlCmd, strlen(ioctlCmd)) == 0
+                && sscanf(socketData, "AESDCHAR_IOCSEEKTO:%u,%u",
+                           &seekPos.write_cmd, &seekPos.write_cmd_offset) == 2) {
+                if (DEBUG == 2) {
+                    printf("IOCTL COMMAND RECEIVED\n");
                 }
-                close(fptr);
-                if (DEBUG > 1) {
-                    printf("FILE BUFFER: %s\n", sendBuffer);
+                int fptr = open(DATA_FILE, O_RDWR);
+                if (fptr != -1) {
+                    if (ioctl(fptr, AESDCHAR_IOCSEEKTO, &seekPos) == 0) {
+                        char sendBuffer[DATA_SIZE];
+                        ssize_t bytesRead;
+
+                        while ((bytesRead = read(fptr, sendBuffer, sizeof(sendBuffer))) > 0) {
+                            send(socket_thread->clientfd, sendBuffer, bytesRead, 0);
+                        }
+                    } else {
+                        sysPrint(1, "ioctl failed");
+                    }
+                    close(fptr);
+                }
+            // If it's not an IOCTL command treat it normally
+            } else {
+                if (DEBUG == 2) {
+                    printf("STD COMMAND RECEIVED\n");
+                }
+                int fptr = open(DATA_FILE, O_CREAT | O_APPEND | O_WRONLY, 0644);
+                if (fptr != -1) {
+                    write(fptr, buffer, incomingBytes);
+                    close(fptr);
+                }
+
+                fptr = open(DATA_FILE, O_RDONLY);
+                if (fptr != -1) {
+                    char sendBuffer[DATA_SIZE];
+                    ssize_t bytesRead;
+                    while ((bytesRead = read(fptr, sendBuffer, sizeof(sendBuffer))) > 0) {
+                        send(socket_thread->clientfd, sendBuffer, bytesRead, 0);
+                    }
+                    close(fptr);
+                    if (DEBUG > 1) {
+                        printf("FILE BUFFER: %s\n", sendBuffer);
+                    }
                 }
             }
                       
